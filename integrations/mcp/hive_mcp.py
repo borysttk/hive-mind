@@ -31,14 +31,21 @@ from mcp.server.fastmcp import FastMCP
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 HV = Path(os.environ.get("HIVE_HOME", _REPO_ROOT)) / "hv"
 
+# Which agent is at the keyboard. The hive attributes every write to a SOURCE and
+# raises confidence only when DISTINCT sources assert the same thing, so a server
+# that hardcodes one label would make several agents indistinguishable and defeat
+# corroboration. Set HIVE_SOURCE per host/agent; defaults to claude-ai so existing
+# deployments behave exactly as before.
+SOURCE = os.environ.get("HIVE_SOURCE", "claude-ai")
+
 # The write/read discipline. This is the SAME contract carried by the Claude Code
 # skill and the Hermes plugin — surfaced to Claude AI as server instructions so the
 # corpus stays sane no matter which agent is at the keyboard.
 INSTRUCTIONS = """\
 Hive Mind is a shared, append-only memory corpus used by multiple AI agents across
-machines, synced peer-to-peer. Your writes are tagged source=claude-ai so the hive can
-tell them apart from Claude Code's and Hermes' — that distinction is what makes
-corroboration and provenance work.
+machines, synced peer-to-peer. Your writes carry this server's SOURCE label (set
+per agent via HIVE_SOURCE, default claude-ai) so the hive can tell agents apart —
+that distinction is what makes corroboration and provenance work.
 
 CONFIDENCE IS DERIVED, NEVER DECLARED. A fact's confidence is a projection over the
 corpus; it rises only when *distinct independent sources* assert the same thing.
@@ -202,7 +209,7 @@ def hive_remember(content: str, tags: str = "", epistemic_status: str = "observa
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
     if epistemic_status and epistemic_status not in tag_list:
         tag_list.append(epistemic_status)
-    args = ["remember", content, "--source", "claude-ai"]
+    args = ["remember", content, "--source", SOURCE]
     if tag_list:
         args += ["--tags", ",".join(tag_list)]
     if outcome_of:
@@ -244,7 +251,7 @@ def hive_decide(content: str = "", rationale: str = "", tags: str = "", informed
     row after every rebuild. An unresolvable reference aborts the whole write. This is what lets the hive learn
     which knowledge turns out to matter once the decision's outcomes are recorded.
     """
-    args = ["decide"] + ([content] if content.strip() else []) + ["--source", "claude-ai"]
+    args = ["decide"] + ([content] if content.strip() else []) + ["--source", SOURCE]
     if rationale:
         args += ["--rationale", rationale]
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
@@ -271,7 +278,7 @@ def hive_propose(content: str, tags: str = "") -> str:
     hypothesis, never corroboration. Use it for "perhaps X relates to Y" — things you want the
     hive to test over time, not things you observed. Search first (hive_search kind="idea").
     """
-    args = ["propose", content, "--source", "claude-ai"]
+    args = ["propose", content, "--source", SOURCE]
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
     if tag_list:
         args += ["--tags", ",".join(tag_list)]
@@ -302,7 +309,7 @@ def hive_retract(fact_id: str, reason: str = "") -> str:
     the old fact in one step. A prose "resolves <sid>" in the correction's text only gets flagged
     later by the audit; it does not retract anything.
     """
-    args = ["retract", str(fact_id).strip(), "--source", "claude-ai"]
+    args = ["retract", str(fact_id).strip(), "--source", SOURCE]
     if reason:
         args += ["--reason", reason]
     return _run_hv(args)
@@ -334,7 +341,7 @@ def hive_entity(action: str, name: str = "", type: str = "", attr: str = "",
     if confidence is not None:
         args += ["--confidence", str(confidence)]
     if action == "link":
-        args += ["--source", "claude-ai"]          # contract 1.23: the link is this server's, not a person's
+        args += ["--source", SOURCE]          # contract 1.23: the link is this server's, not a person's
     return _run_hv(args)
 
 
@@ -432,7 +439,7 @@ def hive_nudge(event: str, session_id: str = "", cwd: str = "", text: str = "") 
 
     Returns hv's hint, or "" when there is nothing to surface.
     """
-    args = ["nudge", "--event", event, "--agent", "claude-ai"]
+    args = ["nudge", "--event", event, "--agent", SOURCE]
     if session_id:
         args += ["--session", session_id]
     if cwd:
@@ -467,7 +474,7 @@ def hive_telemetry(event: str, session_id: str = "", cwd: str = "") -> str:
     event="start" at the beginning, event="end" when wrapping up. Pull-only caveat: an MCP host
     cannot guarantee the end call fires, so event="end" is best-effort.
     """
-    args = ["telemetry", "record", "--event", event, "--agent", "claude-ai"]
+    args = ["telemetry", "record", "--event", event, "--agent", SOURCE]
     if session_id:
         args += ["--session", session_id]
     if cwd:
